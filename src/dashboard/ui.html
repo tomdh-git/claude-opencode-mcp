@@ -1,0 +1,1083 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OpenCode CPU Architecture & Orchestration Dashboard</title>
+  <style>
+    :root {
+      --bg: #0b0f19;
+      --card-bg: #111827;
+      --card-border: #1f2937;
+      --card-hover: #1e293b;
+      --text: #f3f4f6;
+      --text-muted: #9ca3af;
+      --accent: #3b82f6;
+      --accent-glow: rgba(59, 130, 246, 0.25);
+      --executing: #10b981;
+      --executing-glow: rgba(16, 185, 129, 0.3);
+      --tool: #06b6d4;
+      --tool-glow: rgba(6, 182, 212, 0.3);
+      --stalled: #f59e0b;
+      --stalled-glow: rgba(245, 158, 11, 0.35);
+      --fault: #ef4444;
+      --retired: #8b5cf6;
+      --idle: #4b5563;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      overflow-x: hidden;
+    }
+    header {
+      background: #0d1322;
+      border-bottom: 1px solid var(--card-border);
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 40;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .brand-logo {
+      width: 28px;
+      height: 28px;
+      background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 14px;
+    }
+    .brand-title {
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    .brand-subtitle {
+      font-size: 11px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .btn {
+      background: #1f2937;
+      color: var(--text);
+      border: 1px solid #374151;
+      padding: 6px 14px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+    }
+    .btn:hover { background: #374151; border-color: #4b5563; }
+    .btn-primary { background: #2563eb; border-color: #3b82f6; }
+    .btn-primary:hover { background: #1d4ed8; }
+    .btn-danger { background: #991b1b; border-color: #dc2626; }
+    .btn-danger:hover { background: #b91c1c; }
+    .btn-sm { padding: 4px 8px; font-size: 11px; }
+
+    /* CPU HUD Bar */
+    .hud-bar {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 14px;
+      padding: 16px 24px;
+      background: #0f172a;
+      border-bottom: 1px solid var(--card-border);
+    }
+    .hud-stat {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 10px 14px;
+      position: relative;
+    }
+    .hud-stat-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 4px;
+    }
+    .hud-stat-val {
+      font-size: 20px;
+      font-weight: 700;
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+    }
+    .hud-stat-sub {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-weight: 400;
+    }
+
+    /* Hazard Alert Banner */
+    #hazardBanner {
+      display: none;
+      background: rgba(245, 158, 11, 0.12);
+      border-left: 4px solid var(--stalled);
+      border-bottom: 1px solid rgba(245, 158, 11, 0.3);
+      padding: 12px 24px;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+    .hazard-title {
+      font-weight: 600;
+      color: #fbbf24;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+    }
+    .hazard-desc {
+      font-size: 12px;
+      color: #e5e7eb;
+      margin-top: 2px;
+    }
+
+    /* Main Container */
+    main {
+      padding: 24px;
+      max-width: 1600px;
+      margin: 0 auto;
+    }
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+    }
+    .section-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: #e5e7eb;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 11px;
+      padding: 2px 7px;
+      border-radius: 9999px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .badge-executing { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); }
+    .badge-tool { background: rgba(6, 182, 212, 0.15); color: #22d3ee; border: 1px solid rgba(6, 182, 212, 0.4); }
+    .badge-stalled { background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.5); }
+    .badge-retired { background: rgba(139, 92, 246, 0.15); color: #a78bfa; border: 1px solid rgba(139, 92, 246, 0.4); }
+    .badge-fault { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4); }
+    .badge-idle { background: #374151; color: #9ca3af; }
+
+    /* CPU Core Grid */
+    .core-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 16px;
+      margin-bottom: 28px;
+    }
+    .core-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      padding: 16px;
+      cursor: pointer;
+      position: relative;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    .core-card:hover {
+      border-color: #3b82f6;
+      background: var(--card-hover);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    }
+    .core-card.stage-EXECUTING {
+      border-color: rgba(16, 185, 129, 0.6);
+      box-shadow: 0 0 16px var(--executing-glow);
+    }
+    .core-card.stage-TOOL_EXEC {
+      border-color: rgba(6, 182, 212, 0.6);
+      box-shadow: 0 0 16px var(--tool-glow);
+    }
+    .core-card.stage-STALLED {
+      border-color: rgba(245, 158, 11, 0.8);
+      box-shadow: 0 0 20px var(--stalled-glow);
+      animation: pulseAlert 2.5s infinite;
+    }
+    @keyframes pulseAlert {
+      0%, 100% { border-color: rgba(245, 158, 11, 0.8); }
+      50% { border-color: rgba(245, 158, 11, 0.3); }
+    }
+    .core-card-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .core-num {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      font-family: monospace;
+    }
+    .core-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-top: 2px;
+    }
+    .core-meta {
+      font-size: 12px;
+      color: var(--text-muted);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 8px 0;
+    }
+    .core-meta-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: #1e293b;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    .core-tool-box {
+      background: #0f172a;
+      border: 1px solid #1e293b;
+      border-radius: 6px;
+      padding: 6px 10px;
+      font-family: monospace;
+      font-size: 11px;
+      margin: 8px 0;
+      color: #38bdf8;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .core-hazard-box {
+      background: rgba(245, 158, 11, 0.12);
+      border: 1px solid rgba(245, 158, 11, 0.4);
+      border-radius: 6px;
+      padding: 6px 10px;
+      font-size: 11px;
+      color: #fbbf24;
+      margin: 8px 0;
+    }
+    .core-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 11px;
+      color: var(--text-muted);
+      border-top: 1px solid #1f2937;
+      padding-top: 8px;
+      margin-top: 8px;
+    }
+
+    /* Event Bus Feed */
+    .events-panel {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      padding: 16px;
+    }
+    .events-list {
+      max-height: 280px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .event-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 6px 10px;
+      border-radius: 6px;
+      background: #0f172a;
+      font-size: 12px;
+      font-family: monospace;
+      border-left: 3px solid transparent;
+    }
+    .event-row.ev-info { border-color: #3b82f6; }
+    .event-row.ev-warn { border-color: #f59e0b; }
+    .event-row.ev-error { border-color: #ef4444; }
+    .event-row.ev-success { border-color: #10b981; }
+    .event-time { color: var(--text-muted); font-size: 11px; white-space: nowrap; }
+    .event-type { font-weight: 600; color: #93c5fd; white-space: nowrap; }
+    .event-summary { color: #d1d5db; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+
+    /* Node Inspector Drawer */
+    .drawer-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.65);
+      backdrop-filter: blur(4px);
+      z-index: 100;
+      display: none;
+      justify-content: flex-end;
+    }
+    .drawer-overlay.open { display: flex; }
+    .drawer {
+      width: 68%;
+      max-width: 900px;
+      min-width: 420px;
+      background: #0f172a;
+      border-left: 1px solid var(--card-border);
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      box-shadow: -10px 0 30px rgba(0, 0, 0, 0.5);
+      animation: slideIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    @keyframes slideIn {
+      from { transform: translateX(100%); }
+      to { transform: translateX(0); }
+    }
+    .drawer-header {
+      padding: 16px 20px;
+      background: #111827;
+      border-bottom: 1px solid var(--card-border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .drawer-title-group {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      overflow: hidden;
+    }
+    .drawer-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .drawer-subtitle {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-family: monospace;
+    }
+    .drawer-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    /* OpenCode App-Like Output Rendering */
+    .chat-bubble {
+      border-radius: 8px;
+      padding: 14px 16px;
+      position: relative;
+    }
+    .chat-user {
+      background: #1e293b;
+      border: 1px solid #334155;
+      margin-left: 40px;
+    }
+    .chat-assistant {
+      background: #111827;
+      border: 1px solid #1f2937;
+      margin-right: 20px;
+    }
+    .chat-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      padding-bottom: 4px;
+    }
+    .chat-author {
+      font-weight: 700;
+      color: #60a5fa;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    /* Thought / Reasoning Collapsible */
+    .thought-container {
+      background: rgba(30, 41, 59, 0.6);
+      border-left: 3px solid #8b5cf6;
+      border-radius: 4px;
+      margin: 8px 0;
+      font-size: 12px;
+      overflow: hidden;
+    }
+    .thought-toggle {
+      padding: 8px 12px;
+      cursor: pointer;
+      color: #c4b5fd;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      user-select: none;
+    }
+    .thought-toggle:hover { background: rgba(139, 92, 246, 0.1); }
+    .thought-content {
+      padding: 10px 12px;
+      color: #94a3b8;
+      font-family: monospace;
+      font-size: 11px;
+      line-height: 1.6;
+      border-top: 1px solid rgba(139, 92, 246, 0.2);
+      white-space: pre-wrap;
+      display: none;
+    }
+    .thought-container.expanded .thought-content { display: block; }
+
+    /* Tool Call Box */
+    .tool-card {
+      background: #090d16;
+      border: 1px solid #1e293b;
+      border-radius: 6px;
+      margin: 10px 0;
+      overflow: hidden;
+    }
+    .tool-header {
+      background: #0e1526;
+      padding: 8px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+      font-family: monospace;
+      border-bottom: 1px solid #1e293b;
+    }
+    .tool-name-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: #38bdf8;
+      font-weight: 600;
+    }
+    .tool-cmd {
+      padding: 8px 12px;
+      background: #060911;
+      color: #fbbf24;
+      font-family: monospace;
+      font-size: 11px;
+      overflow-x: auto;
+      border-bottom: 1px solid #1e293b;
+    }
+    .tool-output {
+      padding: 10px 12px;
+      background: #05080e;
+      color: #e2e8f0;
+      font-family: "Cascadia Code", "Fira Code", monospace;
+      font-size: 11px;
+      max-height: 240px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      line-height: 1.45;
+    }
+
+    /* Markdown prose inside assistant message */
+    .prose {
+      font-size: 13px;
+      color: #f1f5f9;
+      line-height: 1.6;
+    }
+    .prose p { margin-bottom: 8px; }
+    .prose pre {
+      background: #090d16;
+      border: 1px solid #1e293b;
+      border-radius: 6px;
+      padding: 10px 14px;
+      overflow-x: auto;
+      font-family: monospace;
+      font-size: 12px;
+      margin: 10px 0;
+      color: #34d399;
+    }
+    .prose code {
+      background: #1e293b;
+      padding: 2px 5px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-family: monospace;
+      color: #f43f5e;
+    }
+
+    .drawer-footer {
+      padding: 14px 20px;
+      background: #111827;
+      border-top: 1px solid var(--card-border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .drawer-input {
+      flex: 1;
+      background: #0b0f19;
+      border: 1px solid #374151;
+      color: #fff;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 13px;
+    }
+    .drawer-input:focus { outline: none; border-color: #3b82f6; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <div class="brand-logo">⚡</div>
+      <div>
+        <div class="brand-title">OpenCode CPU Architecture Monitor</div>
+        <div class="brand-subtitle">Headless Multi-Core Bridge &middot; Fact-Based Telemetry</div>
+      </div>
+    </div>
+    <div class="header-actions">
+      <button class="btn" id="btnRotateKilo" title="Rotate Kilo API Account">
+        🔄 Rotate Key (<span id="activeKeyLabel">--</span>)
+      </button>
+      <button class="btn btn-primary" id="btnRefresh">
+        ↻ Refresh
+      </button>
+    </div>
+  </header>
+
+  <!-- CPU Pipeline HUD Bar -->
+  <div class="hud-bar">
+    <div class="hud-stat">
+      <div class="hud-stat-label">Active CPU Cores</div>
+      <div class="hud-stat-val">
+        <span id="hudActiveCores">0</span> / <span id="hudTotalCores" class="hud-stat-sub">0</span>
+      </div>
+      <div class="hud-stat-sub" id="hudCoresBreakdown">0 stalled &middot; 0 retired</div>
+    </div>
+    <div class="hud-stat">
+      <div class="hud-stat-label">Instruction / Token IPC</div>
+      <div class="hud-stat-val">
+        <span id="hudIpc">0.0</span> <span class="hud-stat-sub">tok/s</span>
+      </div>
+      <div class="hud-stat-sub">Output token velocity</div>
+    </div>
+    <div class="hud-stat">
+      <div class="hud-stat-label">Workload Output</div>
+      <div class="hud-stat-val">
+        <span id="hudTotalOutput">0</span> <span class="hud-stat-sub">tokens</span>
+      </div>
+      <div class="hud-stat-sub" id="hudTokensDetail">In: 0 &middot; R: 0</div>
+    </div>
+    <div class="hud-stat">
+      <div class="hud-stat-label">Cache Efficiency</div>
+      <div class="hud-stat-val">
+        <span id="hudCacheRatio">0%</span>
+      </div>
+      <div class="hud-stat-sub" id="hudCacheRead">0 tokens cached</div>
+    </div>
+    <div class="hud-stat">
+      <div class="hud-stat-label">Headless Server</div>
+      <div class="hud-stat-val">
+        <span id="hudServiceStatus" class="badge badge-executing">LIVE</span>
+      </div>
+      <div class="hud-stat-sub" id="hudServiceDetail">PID: -- &middot; v--</div>
+    </div>
+  </div>
+
+  <!-- Factual Hazard Alert Banner -->
+  <div id="hazardBanner">
+    <div>
+      <div class="hazard-title">
+        ⚠️ <span id="hazardType">HAZARD DETECTED</span>
+      </div>
+      <div class="hazard-desc" id="hazardText">
+        Stall identified based on real-time execution facts.
+      </div>
+    </div>
+    <button class="btn btn-sm btn-danger" id="hazardActionBtn">Resolve Stall</button>
+  </div>
+
+  <main>
+    <!-- CPU Execution Cores Grid -->
+    <div class="section-header">
+      <div class="section-title">
+        <span>Execution Units (Cores)</span>
+        <span class="badge badge-idle" id="badgeCoresCount">0 Loaded</span>
+      </div>
+      <div style="font-size: 12px; color: var(--text-muted);">
+        Click any core node to inspect its rendered OpenCode stream
+      </div>
+    </div>
+
+    <div class="core-grid" id="coreGrid">
+      <!-- Cores populated by JS -->
+    </div>
+
+    <!-- Live Event Bus Feed -->
+    <div class="section-header">
+      <div class="section-title">
+        <span>Factual Event Bus Stream</span>
+        <span class="badge badge-tool">SSE Live</span>
+      </div>
+      <button class="btn btn-sm" id="btnClearEvents">Clear Log</button>
+    </div>
+
+    <div class="events-panel">
+      <div class="events-list" id="eventsList">
+        <div style="padding: 16px; text-align: center; color: var(--text-muted); font-size: 13px;">
+          Listening for live OpenCode events...
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Node Inspector Drawer (Full Rendered OpenCode App View) -->
+  <div class="drawer-overlay" id="drawerOverlay">
+    <div class="drawer">
+      <div class="drawer-header">
+        <div class="drawer-title-group">
+          <div class="drawer-title" id="drawerTitle">Session Name</div>
+          <div class="drawer-subtitle" id="drawerSub">ID &middot; Agent &middot; Model</div>
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <button class="btn btn-sm btn-danger" id="btnDrawerInterrupt">Interrupt Core</button>
+          <button class="btn btn-sm" id="btnToggleRaw">View JSON</button>
+          <button class="btn btn-sm" id="btnDrawerClose">✕</button>
+        </div>
+      </div>
+
+      <div class="drawer-body" id="drawerBody">
+        <!-- Rendered conversation stream inserted here -->
+      </div>
+
+      <div class="drawer-footer">
+        <input type="text" class="drawer-input" id="drawerPromptInput" placeholder="Send instruction or continue to this core..." />
+        <button class="btn btn-primary" id="btnDrawerSend">Send</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let activeSessionId = null;
+    let showingRawJson = false;
+    let rawSessionCache = null;
+
+    // Fetch CPU status and render Cores
+    async function updateStatus() {
+      try {
+        const res = await fetch("/api/status");
+        if (!res.ok) return;
+        const data = await res.json();
+        renderHud(data);
+        renderCores(data.cores);
+        renderHazards(data.recentHazards);
+      } catch (e) {
+        console.error("Failed to fetch status:", e);
+      }
+    }
+
+    function renderHud(data) {
+      document.getElementById("hudActiveCores").textContent = data.metrics.activeCores;
+      document.getElementById("hudTotalCores").textContent = data.metrics.totalCores;
+      document.getElementById("hudCoresBreakdown").textContent =
+        `${data.metrics.stalledCores} stalled · ${data.metrics.retiredCores} retired · ${data.metrics.idleCores} idle`;
+
+      document.getElementById("hudIpc").textContent = data.metrics.ipcTokensPerSec.toFixed(1);
+      document.getElementById("hudTotalOutput").textContent = Number(data.metrics.totalTokens.output).toLocaleString();
+      document.getElementById("hudTokensDetail").textContent =
+        `In: ${Number(data.metrics.totalTokens.input).toLocaleString()} · R: ${Number(data.metrics.totalTokens.reasoning).toLocaleString()}`;
+
+      document.getElementById("hudCacheRatio").textContent = `${data.metrics.cacheHitRatio}%`;
+      document.getElementById("hudCacheRead").textContent =
+        `${Number(data.metrics.totalTokens.cacheRead).toLocaleString()} tokens cached`;
+
+      const s = data.service;
+      const sElem = document.getElementById("hudServiceStatus");
+      if (s.running) {
+        sElem.textContent = "HEADLESS OK";
+        sElem.className = "badge badge-executing";
+        document.getElementById("hudServiceDetail").textContent = `PID ${s.pid} · v${s.version || "2.3"}`;
+      } else {
+        sElem.textContent = "STOPPED";
+        sElem.className = "badge badge-fault";
+        document.getElementById("hudServiceDetail").textContent = "Service not running";
+      }
+
+      document.getElementById("activeKeyLabel").textContent =
+        data.kiloPool.activeAccountId || "default";
+
+      document.getElementById("badgeCoresCount").textContent = `${data.cores.length} Cores`;
+    }
+
+    function renderHazards(hazards) {
+      const banner = document.getElementById("hazardBanner");
+      if (!hazards || hazards.length === 0) {
+        banner.style.display = "none";
+        return;
+      }
+      banner.style.display = "flex";
+      const h = hazards[0];
+      document.getElementById("hazardType").textContent = `${h.type} (${h.elapsedSec}s)`;
+      document.getElementById("hazardText").textContent = `${h.reason}. Suggestion: ${h.recommendedAction}`;
+      const btn = document.getElementById("hazardActionBtn");
+      btn.onclick = () => {
+        if (h.type === "QUOTA_429") rotateKilo();
+        else updateStatus();
+      };
+    }
+
+    function renderCores(cores) {
+      const grid = document.getElementById("coreGrid");
+      grid.innerHTML = "";
+
+      if (!cores || cores.length === 0) {
+        grid.innerHTML = '<div style="color: var(--text-muted); padding: 20px;">No OpenCode sessions registered yet.</div>';
+        return;
+      }
+
+      cores.forEach((core) => {
+        const card = document.createElement("div");
+        card.className = `core-card stage-${core.stage}`;
+        card.onclick = () => openSessionDrawer(core.sessionId);
+
+        let badgeClass = "badge-idle";
+        if (core.stage === "EXECUTING") badgeClass = "badge-executing";
+        else if (core.stage === "TOOL_EXEC") badgeClass = "badge-tool";
+        else if (core.stage === "STALLED") badgeClass = "badge-stalled";
+        else if (core.stage === "RETIRED") badgeClass = "badge-retired";
+        else if (core.stage === "FAULT") badgeClass = "badge-fault";
+
+        let toolBoxHtml = "";
+        if (core.currentTool) {
+          toolBoxHtml = `<div class="core-tool-box">⚡ ${core.currentTool.name}: ${escapeHtml(core.currentTool.inputPreview)}</div>`;
+        }
+
+        let hazardBoxHtml = "";
+        if (core.stallHazard) {
+          hazardBoxHtml = `<div class="core-hazard-box">⚠️ <b>${core.stallHazard.type}</b>: ${escapeHtml(core.stallHazard.reason)}</div>`;
+        }
+
+        const totalTok = core.tokens.input + core.tokens.output + core.tokens.reasoning;
+
+        card.innerHTML = `
+          <div>
+            <div class="core-card-header">
+              <span class="core-num">CORE #${core.coreId}</span>
+              <span class="badge ${badgeClass}">${core.stage}</span>
+            </div>
+            <div class="core-title" title="${escapeHtml(core.title)}">${escapeHtml(core.title)}</div>
+            <div class="core-meta">
+              <span class="core-meta-item">🤖 ${escapeHtml(core.agent)}</span>
+              <span class="core-meta-item">🧠 ${escapeHtml(core.model)}</span>
+            </div>
+            ${toolBoxHtml}
+            ${hazardBoxHtml}
+          </div>
+          <div class="core-footer">
+            <span>Tokens: ${totalTok.toLocaleString()}</span>
+            <span>Outcome: ${core.outcome || "running"}</span>
+          </div>
+        `;
+        grid.appendChild(card);
+      });
+    }
+
+    // Open session detail in App-Like UI
+    async function openSessionDrawer(sessionId) {
+      activeSessionId = sessionId;
+      const overlay = document.getElementById("drawerOverlay");
+      overlay.classList.add("open");
+
+      const body = document.getElementById("drawerBody");
+      body.innerHTML = '<div style="color: var(--text-muted); padding: 40px; text-align: center;">Loading session messages...</div>';
+
+      try {
+        const [renderRes, rawRes] = await Promise.all([
+          fetch(`/api/session/${sessionId}`),
+          fetch(`/api/session/${sessionId}/raw`)
+        ]);
+
+        if (!renderRes.ok) throw new Error("Failed to load session details");
+
+        const session = await renderRes.json();
+        rawSessionCache = await rawRes.json();
+
+        function maskDir(d) {
+          if (!d) return "";
+          return String(d).replace(/\\/g, "/").replace(/^[A-Za-z]:\/Users\/[^/]+/i, "~").replace(/^\/(home|Users)\/[^/]+/i, "~");
+        }
+
+        document.getElementById("drawerTitle").textContent = session.title;
+        document.getElementById("drawerSub").textContent =
+          `${session.id} · Agent: ${session.agent || "default"} · Model: ${session.model || "default"} · ${maskDir(session.directory)}`;
+
+        renderSessionMessages(session);
+      } catch (err) {
+        body.innerHTML = `<div style="color: #ef4444; padding: 20px;">Error loading session: ${escapeHtml(err.message)}</div>`;
+      }
+    }
+
+    function renderSessionMessages(session) {
+      const body = document.getElementById("drawerBody");
+      body.innerHTML = "";
+
+      if (showingRawJson) {
+        body.innerHTML = `<pre style="font-family: monospace; font-size: 11px; color: #a7f3d0; background: #060911; padding: 16px; border-radius: 6px; overflow: auto; max-height: 80vh;">${escapeHtml(JSON.stringify(rawSessionCache, null, 2))}</pre>`;
+        return;
+      }
+
+      if (!session.messages || session.messages.length === 0) {
+        body.innerHTML = '<div style="color: var(--text-muted); padding: 40px; text-align: center;">No messages recorded for this session.</div>';
+        return;
+      }
+
+      session.messages.forEach((msg) => {
+        const bubble = document.createElement("div");
+        const isUser = msg.type === "user";
+        bubble.className = `chat-bubble ${isUser ? "chat-user" : "chat-assistant"}`;
+
+        let authorLabel = isUser ? "User / Orchestrator" : `OpenCode Agent (${msg.agent || "agent"})`;
+        let authorColor = isUser ? "#38bdf8" : "#818cf8";
+
+        let thoughtHtml = "";
+        if (msg.thought) {
+          const durSec = msg.thoughtDurationMs ? ` (${Math.round(msg.thoughtDurationMs / 100) / 10}s)` : "";
+          thoughtHtml = `
+            <div class="thought-container" onclick="this.classList.toggle('expanded')">
+              <div class="thought-toggle">
+                <span>💭 Thought Process${durSec}</span>
+                <span style="font-size: 10px;">click to view</span>
+              </div>
+              <div class="thought-content">${escapeHtml(msg.thought)}</div>
+            </div>
+          `;
+        }
+
+        let toolsHtml = "";
+        if (msg.tools && msg.tools.length > 0) {
+          msg.tools.forEach((tool) => {
+            const exitBadge = tool.exitCode !== undefined ? `<span style="color: ${tool.exitCode === 0 ? '#34d399' : '#f87171'}">exit: ${tool.exitCode}</span>` : "";
+            toolsHtml += `
+              <div class="tool-card">
+                <div class="tool-header">
+                  <span class="tool-name-badge">🔧 ${escapeHtml(tool.name)}</span>
+                  <span>${exitBadge} ${tool.status}</span>
+                </div>
+                ${tool.commandOrInput ? `<div class="tool-cmd">$ ${escapeHtml(tool.commandOrInput)}</div>` : ""}
+                ${tool.stdout ? `<div class="tool-output">${escapeHtml(tool.stdout)}</div>` : ""}
+              </div>
+            `;
+          });
+        }
+
+        let errorHtml = "";
+        if (msg.error) {
+          errorHtml = `
+            <div style="background: rgba(239, 68, 68, 0.15); border: 1px solid #ef4444; border-radius: 6px; padding: 10px 14px; color: #fca5a5; font-size: 12px; margin: 8px 0;">
+              <b>⚠️ Error [${msg.error.status || msg.error.type || "Fault"}]:</b> ${escapeHtml(msg.error.message)}
+            </div>
+          `;
+        }
+
+        let textHtml = "";
+        if (msg.text) {
+          textHtml = `<div class="prose">${formatSimpleMarkdown(msg.text)}</div>`;
+        }
+
+        bubble.innerHTML = `
+          <div class="chat-header">
+            <span class="chat-author" style="color: ${authorColor}">● ${authorLabel}</span>
+            <span>${new Date(msg.createdTime).toLocaleTimeString()}</span>
+          </div>
+          ${thoughtHtml}
+          ${toolsHtml}
+          ${textHtml}
+          ${errorHtml}
+        `;
+        body.appendChild(bubble);
+      });
+
+      // Scroll to bottom
+      body.scrollTop = body.scrollHeight;
+    }
+
+    function formatSimpleMarkdown(txt) {
+      if (!txt) return "";
+      let html = escapeHtml(txt);
+      // Fenced code blocks ```
+      html = html.replace(/```([a-zA-Z0-9_-]*)\r?\n([\s\S]*?)```/g, (m, lang, code) => {
+        return `<pre><code>${code}</code></pre>`;
+      });
+      // Inline code `...`
+      html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
+      // Bold
+      html = html.replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>");
+      // Paragraphs
+      html = html.split("\n\n").map(p => `<p>${p.replace(/\n/g, "<br>")}</p>`).join("");
+      return html;
+    }
+
+    function escapeHtml(s) {
+      if (s == null) return "";
+      return String(s)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    // Connect to Server-Sent Events for Live Facts
+    function connectEventStream() {
+      const source = new EventSource("/api/events");
+
+      source.onmessage = (event) => {
+        try {
+          const e = JSON.parse(event.data);
+          addEventRow(e);
+          // If this event affects running cores, re-poll status
+          if (e.type && (e.type.includes("step") || e.type.includes("tool") || e.type.includes("execution") || e.type.includes("quota"))) {
+            updateStatus();
+          }
+        } catch {}
+      };
+
+      source.onerror = () => {
+        source.close();
+        setTimeout(connectEventStream, 4000);
+      };
+    }
+
+    function addEventRow(e) {
+      const list = document.getElementById("eventsList");
+      if (list.querySelector("div[style*='text-align: center']")) {
+        list.innerHTML = "";
+      }
+
+      const row = document.createElement("div");
+      row.className = `event-row ev-${e.severity || "info"}`;
+      const timeStr = new Date(e.timestamp).toLocaleTimeString();
+      const coreInfo = e.coreTitle ? `[${escapeHtml(e.coreTitle)}]` : "";
+
+      row.innerHTML = `
+        <span class="event-time">${timeStr}</span>
+        <span class="event-type">${escapeHtml(e.type)}</span>
+        <span class="event-summary">${coreInfo} ${escapeHtml(e.summary)}</span>
+      `;
+
+      list.insertBefore(row, list.firstChild);
+      if (list.children.length > 100) list.removeChild(list.lastChild);
+    }
+
+    async function rotateKilo() {
+      try {
+        const res = await fetch("/api/kilo/rotate", { method: "POST" });
+        const data = await res.json();
+        alert(`Kilo rotated: active account=${data.activeAccountId || "rotated"}`);
+        updateStatus();
+      } catch (err) {
+        alert("Rotate failed: " + err);
+      }
+    }
+
+    async function interruptSession() {
+      if (!activeSessionId) return;
+      if (!confirm(`Interrupt core for session ${activeSessionId}?`)) return;
+      try {
+        await fetch(`/api/session/${activeSessionId}/interrupt`, { method: "POST" });
+        alert("Interrupt signal sent");
+        openSessionDrawer(activeSessionId);
+        updateStatus();
+      } catch (e) { alert("Interrupt failed: " + e); }
+    }
+
+    async function sendPromptToCore() {
+      const input = document.getElementById("drawerPromptInput");
+      const text = input.value.trim();
+      if (!text || !activeSessionId) return;
+      try {
+        await fetch(`/api/session/${activeSessionId}/prompt`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text })
+        });
+        input.value = "";
+        setTimeout(() => openSessionDrawer(activeSessionId), 500);
+        updateStatus();
+      } catch (e) { alert("Prompt failed: " + e); }
+    }
+
+    // Event listeners
+    document.getElementById("btnRefresh").onclick = updateStatus;
+    document.getElementById("btnRotateKilo").onclick = rotateKilo;
+    document.getElementById("btnClearEvents").onclick = () => {
+      document.getElementById("eventsList").innerHTML = "";
+    };
+    document.getElementById("btnDrawerClose").onclick = () => {
+      document.getElementById("drawerOverlay").classList.remove("open");
+    };
+    document.getElementById("drawerOverlay").onclick = (e) => {
+      if (e.target.id === "drawerOverlay") {
+        document.getElementById("drawerOverlay").classList.remove("open");
+      }
+    };
+    document.getElementById("btnDrawerInterrupt").onclick = interruptSession;
+    document.getElementById("btnDrawerSend").onclick = sendPromptToCore;
+    document.getElementById("drawerPromptInput").onkeydown = (e) => {
+      if (e.key === "Enter") sendPromptToCore();
+    };
+    document.getElementById("btnToggleRaw").onclick = () => {
+      showingRawJson = !showingRawJson;
+      document.getElementById("btnToggleRaw").textContent = showingRawJson ? "View Rendered" : "View JSON";
+      if (activeSessionId) openSessionDrawer(activeSessionId);
+    };
+
+    // Initial boot
+    updateStatus();
+    connectEventStream();
+    setInterval(updateStatus, 3000);
+  </script>
+</body>
+</html>

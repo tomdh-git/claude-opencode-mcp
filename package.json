@@ -1,0 +1,23 @@
+{
+  "name": "claude-opencode-mcp",
+  "version": "1.0.0",
+  "description": "Stdio MCP server that lets a Claude orchestrator control a local OpenCode V2 instance (sessions, agents, Kilo multi-account, task delegation).",
+  "private": true,
+  "type": "module",
+  "bin": "./src/index.ts",
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "dev": "bun run src/index.ts",
+    "dashboard": "bun run src/dashboard/server.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "@opencode/client": "^2.3.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5"
+  }
+}

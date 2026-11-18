@@ -1,0 +1,51 @@
+# dependencies (bun install)
+node_modules
+
+# output
+out
+dist
+*.tgz
+
+# code coverage
+coverage
+*.lcov
+
+# logs and events
+logs
+*.log
+*.events
+*.err
+report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
+mcp_test_err.txt
+
+# state and runtime artifacts
+tasks.json
+supervisor-state.json
+keeper-queue.json
+keeper-units.json
+keeper.kick
+dead_ids.txt
+.dashboard-port
+scripts/
+
+# backups
+*.bak
+*.bak*
+
+# dotenv environment variable files
+.env
+.env.development.local
+.env.test.local
+.env.production.local
+.env.local
+
+# caches
+.eslintcache
+.cache
+*.tsbuildinfo
+
+# IntelliJ based IDEs
+.idea
+
+# Finder (MacOS) folder config
+.DS_Store
