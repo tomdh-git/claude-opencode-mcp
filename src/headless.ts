@@ -99,7 +99,8 @@ export async function ensureHeadlessService(): Promise<{ url: string; pid: numbe
   const cliPath = findOpenCodeCli();
   // Spawn opencode serve --service detached and hidden
   const child = spawn(cliPath, ["serve", "--service"], {
-    detached: true,
+    // not detached: on Windows detached = DETACHED_PROCESS (no console), so every console child (python via PyManager) opened its own visible window; windowsHide alone gives a hidden console the children inherit
+    detached: false,
     windowsHide: true,
     stdio: "ignore",
     env: { ...process.env },

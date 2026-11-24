@@ -707,7 +707,7 @@
     // Fetch CPU status and render Cores
     async function updateStatus() {
       try {
-        const res = await fetch("/api/status");
+        const res = await fetch("http://localhost:4040/api/status");
         if (!res.ok) return;
         const data = await res.json();
         renderHud(data);
@@ -835,8 +835,8 @@
 
       try {
         const [renderRes, rawRes] = await Promise.all([
-          fetch(`/api/session/${sessionId}`),
-          fetch(`/api/session/${sessionId}/raw`)
+          fetch(`http://localhost:4040/api/session/${sessionId}`),
+          fetch(`http://localhost:4040/api/session/${sessionId}/raw`)
         ]);
 
         if (!renderRes.ok) throw new Error("Failed to load session details");
@@ -971,7 +971,7 @@
 
     // Connect to Server-Sent Events for Live Facts
     function connectEventStream() {
-      const source = new EventSource("/api/events");
+      const source = new EventSource("http://localhost:4040/api/events");
 
       source.onmessage = (event) => {
         try {
@@ -1013,7 +1013,7 @@
 
     async function rotateKilo() {
       try {
-        const res = await fetch("/api/kilo/rotate", { method: "POST" });
+        const res = await fetch("http://localhost:4040/api/kilo/rotate", { method: "POST" });
         const data = await res.json();
         alert(`Kilo rotated: active account=${data.activeAccountId || "rotated"}`);
         updateStatus();
@@ -1026,7 +1026,7 @@
       if (!activeSessionId) return;
       if (!confirm(`Interrupt core for session ${activeSessionId}?`)) return;
       try {
-        await fetch(`/api/session/${activeSessionId}/interrupt`, { method: "POST" });
+        await fetch(`http://localhost:4040/api/session/${activeSessionId}/interrupt`, { method: "POST" });
         alert("Interrupt signal sent");
         openSessionDrawer(activeSessionId);
         updateStatus();
@@ -1038,7 +1038,7 @@
       const text = input.value.trim();
       if (!text || !activeSessionId) return;
       try {
-        await fetch(`/api/session/${activeSessionId}/prompt`, {
+        await fetch(`http://localhost:4040/api/session/${activeSessionId}/prompt`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ text })

@@ -579,6 +579,7 @@ export async function runStdioServer(): Promise<void> {
     {
       mimeType: "text/html;profile=mcp-app",
       description: "OpenCode CPU Architecture & Co-processor Telemetry Component",
+      _meta: { ui: { csp: { connectDomains: ["http://localhost:4040", "http://127.0.0.1:4040"], resourceDomains: [] } } },
     },
     async () => ({
       contents: [
@@ -586,6 +587,7 @@ export async function runStdioServer(): Promise<void> {
           uri: "ui://opencode/cpu-dashboard",
           mimeType: "text/html;profile=mcp-app",
           text: getUiHtml(),
+          _meta: { ui: { csp: { connectDomains: ["http://localhost:4040", "http://127.0.0.1:4040"], resourceDomains: [] } } },
         },
       ],
     }),
