@@ -1,5 +1,3 @@
-import { maskDirectory, redactErrorMessage } from "../config.js";
-
 /**
  * Formats OpenCode messages and session structures into rich, application-grade
  * rendered components (similar to OpenCode app) instead of raw JSON.
@@ -90,7 +88,7 @@ export function formatSessionMessages(session: any, rawMessages: any[]): Formatt
     if (m.error) {
       formatted.error = {
         type: m.error.type,
-        message: redactErrorMessage(m.error.message || "Unknown error"),
+        message: m.error.message || "Unknown error",
         status: m.error.status,
         rawBody: m.error.response?.body,
       };
@@ -155,7 +153,7 @@ export function formatSessionMessages(session: any, rawMessages: any[]): Formatt
   return {
     id: session.id,
     title: session.title || "Untitled Session",
-    directory: maskDirectory(session.location?.directory || ""),
+    directory: session.location?.directory || "",
     agent: session.agent,
     model: modelStr,
     outcome: session.outcome,

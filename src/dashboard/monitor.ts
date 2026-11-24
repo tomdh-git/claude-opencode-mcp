@@ -2,7 +2,6 @@ import { EventEmitter } from "node:events";
 import { getOpenCodeClient } from "../openCode.js";
 import { loadKiloState } from "../kilo.js";
 import { readServiceJson, isPidAlive } from "../headless.js";
-import { maskDirectory } from "../config.js";
 
 export type CoreStage =
   | "IDLE"
@@ -139,7 +138,7 @@ class OpenCodeCpuMonitor extends EventEmitter {
             title: s.title || `Session ${s.id.slice(-6)}`,
             agent: s.agent || "default",
             model: s.model ? `${s.model.providerID ?? ""}/${s.model.id ?? ""}` : "unknown",
-            directory: maskDirectory(s.location?.directory || ""),
+            directory: s.location?.directory || "",
             stage: this.deriveStageFromOutcome(s.outcome),
             subagentOf: s.parentID,
             lastEventTime: s.time?.updated || s.time?.created || Date.now(),

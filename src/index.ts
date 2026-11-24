@@ -21,7 +21,7 @@ import {
 } from "./openCode.js";
 import { kiloStatus, kiloListAccounts, kiloSwitchAccount, kiloAddAccount, kiloClearCooldown, kiloRotate } from "./kilo.js";
 import { taskRegistry, type TaskStatus } from "./tasks.js";
-import { PATHS, isDirectoryAllowed, parseModelRef, redactErrorMessage, maskDirectory } from "./config.js";
+import { PATHS, isDirectoryAllowed, parseModelRef, redactErrorMessage } from "./config.js";
 import { startDashboardServer, getDashboardUrl, getUiHtml } from "./dashboard/server.js";
 import { cpuMonitor } from "./dashboard/monitor.js";
 import { formatSessionMessages } from "./dashboard/render.js";
@@ -324,7 +324,7 @@ export async function runStdioServer(): Promise<void> {
         permission: args.permission,
         instructions: args.instructions,
       });
-      return jsonResult({ ok: true, name: args.name.trim(), path: maskDirectory(filePath) });
+      return jsonResult({ ok: true, name: args.name.trim(), path: filePath });
     },
   );
 
@@ -579,7 +579,6 @@ export async function runStdioServer(): Promise<void> {
     {
       mimeType: "text/html;profile=mcp-app",
       description: "OpenCode CPU Architecture & Co-processor Telemetry Component",
-      _meta: { ui: { csp: { connectDomains: ["http://localhost:4040", "http://127.0.0.1:4040"], resourceDomains: [] } } },
     },
     async () => ({
       contents: [
@@ -587,7 +586,6 @@ export async function runStdioServer(): Promise<void> {
           uri: "ui://opencode/cpu-dashboard",
           mimeType: "text/html;profile=mcp-app",
           text: getUiHtml(),
-          _meta: { ui: { csp: { connectDomains: ["http://localhost:4040", "http://127.0.0.1:4040"], resourceDomains: [] } } },
         },
       ],
     }),
@@ -727,6 +725,59 @@ export async function runStdioServer(): Promise<void> {
   startDashboardServer().catch((err) => {
     console.error("[claude-opencode-mcp] Dashboard auto-start warning:", err);
   });
+
+  // ---- unit pipeline (keeper) control: file based, zero model tokens inside the keeper. oc_digest = the ONE file the orchestrator reads; oc_nudge = talk to a running unit / write its hint.
+  server.registerTool(
+    "oc_digest",
+    {
+      description: "Read docs/progress/DIGEST.md: the auto-triaged summary of finished units. Only the VERIFY (machine-verified, tick them) and NEEDS HINT (same blocker repeated, write a hint) sections need the orchestrator; everything else is retried automatically.",
+      inputSchema: z.object({}),
+    },
+    async () => {
+      try { return jsonResult({ digest: await fs.readFile("C:/Users/Atomi/Desktop/BlueySenseV2/docs/progress/DIGEST.md", "utf8") }); }
+      catch (e) { return errResult("no digest yet: " + String(e)); }
+    },
+  );
+
+  server.registerTool(
+    "oc_nudge",
+    {
+      description: "Nudge the unit pipeline through the keeper. unit = 'U-E<ID>' or 'ALL'. message = text sent to the running unit now (or saved as the item's hint if it is not running), or a command: '!retry' (clear STUCK + continue), '!restart' (interrupt + continue), '!drop' (remove from the queue). Set hint=true to write docs/progress/hints/<ID>.txt instead (used at the item's next start; lifts a NEEDS HINT parking).",
+      inputSchema: z.object({
+        unit: z.string().describe("U-E<ID>, or ALL"),
+        message: z.string().describe("text or !retry / !restart / !drop"),
+        hint: z.boolean().optional().describe("write the item's hint file instead of messaging the unit"),
+      }),
+    },
+    async (args) => {
+      if (!/^(ALL|U-E[A-Za-z0-9]+)$/.test(args.unit)) return errResult("unit must be ALL or U-E<ID>");
+      if (args.hint) {
+        const id = args.unit.replace(/^U-E/, "");
+        const dir = "C:/Users/Atomi/Desktop/BlueySenseV2/docs/progress/hints";
+        await fs.mkdir(dir, { recursive: true });
+        await fs.appendFile(`${dir}/${id}.txt`, args.message + String.fromCharCode(10));
+        return jsonResult({ ok: true, hint: id });
+      }
+      const dir = "C:/Users/Atomi/opencode-mcp-bridge/nudge-inbox";
+      await fs.mkdir(dir, { recursive: true });
+      const base = `${dir}/${args.unit}.${Date.now()}`;
+      await fs.writeFile(base + ".tmp", args.message);
+      await fs.rename(base + ".tmp", base + ".txt");
+      return jsonResult({ ok: true, queued: args.unit });
+    },
+  );
+
+  server.registerTool(
+    "oc_pipeline",
+    {
+      description: "Status of the unit daemon (ocd, http://127.0.0.1:4777/status): running units with idle seconds, queue, key pool state, last journal lines. Cheap: use it instead of reading logs.",
+      inputSchema: z.object({}),
+    },
+    async () => {
+      try { const r = await fetch("http://127.0.0.1:4777/status", { signal: AbortSignal.timeout(5000) }); return jsonResult(await r.json()); }
+      catch (e) { return errResult("ocd not answering on 4777 (the watchdog restarts it within ~90 s): " + String(e)); }
+    },
+  );
 
   const transport = new StdioServerTransport();
   await server.connect(transport);

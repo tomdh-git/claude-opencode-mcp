@@ -844,14 +844,9 @@
         const session = await renderRes.json();
         rawSessionCache = await rawRes.json();
 
-        function maskDir(d) {
-          if (!d) return "";
-          return String(d).replace(/\\/g, "/").replace(/^[A-Za-z]:\/Users\/[^/]+/i, "~").replace(/^\/(home|Users)\/[^/]+/i, "~");
-        }
-
         document.getElementById("drawerTitle").textContent = session.title;
         document.getElementById("drawerSub").textContent =
-          `${session.id} · Agent: ${session.agent || "default"} · Model: ${session.model || "default"} · ${maskDir(session.directory)}`;
+          `${session.id} · Agent: ${session.agent || "default"} · Model: ${session.model || "default"} · ${session.directory}`;
 
         renderSessionMessages(session);
       } catch (err) {

@@ -31,25 +31,6 @@ export function maskSecret(secret: string | undefined | null): string {
   return `${secret.slice(0, 4)}...${secret.slice(-4)}`;
 }
 
-/**
- * Mask directories to prevent leaking local usernames, drive paths, or private host filesystem paths.
- * Replaces personal user profile paths with `~` and normalizes backslashes.
- */
-export function maskDirectory(dir: string | undefined | null): string {
-  if (!dir) return "";
-  const home = homeDir();
-  let normalized = dir.replace(/\\/g, "/");
-  const normHome = home.replace(/\\/g, "/");
-  if (normalized.toLowerCase().startsWith(normHome.toLowerCase())) {
-    normalized = "~" + normalized.slice(normHome.length);
-  }
-  // Windows: C:/Users/<username> -> ~
-  normalized = normalized.replace(/^[A-Za-z]:\/Users\/[^/]+/i, "~");
-  // Unix/macOS: /home/<username> or /Users/<username> -> ~
-  normalized = normalized.replace(/^\/(home|Users)\/[^/]+/i, "~");
-  return normalized;
-}
-
 /** Return headers with sensitive values redacted, safe to include in error output. */
 export function redactHeaders(headers: Record<string, string> | undefined | null): Record<string, string> {
   const sensitive = new Set(["authorization", "x-api-key", "cookie", "x-opencode-auth", "proxy-authorization"]);
@@ -61,19 +42,16 @@ export function redactHeaders(headers: Record<string, string> | undefined | null
   return out;
 }
 
-/** Redact common secret-bearing substrings and private directories from an error message before surfacing it. */
+/** Redact common secret-bearing substrings from an error message before surfacing it. */
 export function redactErrorMessage(message: unknown): string {
   const text = message == null ? "" : String(message);
   return text
     .replace(/Bearer\s+[A-Za-z0-9\-._~+/]+=*/g, "Bearer [redacted]")
     .replace(/Basic\s+[A-Za-z0-9\-._~+/]+=*/g, "Basic [redacted]")
-    .replace(/sk-[A-Za-z0-9]{15,}/g, "sk-[redacted]")
-    .replace(/nvapi-[A-Za-z0-9\-_]{15,}/g, "nvapi-[redacted]")
+    .replace(/sk-[A-Za-z0-9]{20,}/g, "sk-[redacted]")
+    .replace(/nvapi-[A-Za-z0-9\-_]{20,}/g, "nvapi-[redacted]")
     .replace(/password["']?\s*[:=]\s*["']?([^"'\s,}]+)/gi, "password=[redacted]")
-    .replace(/api[_-]?key["']?\s*[:=]\s*["']?([^"'\s,}]+)/gi, "api_key=[redacted]")
-    .replace(/[A-Za-z]:\\Users\\[^\s\\/]+/gi, "~")
-    .replace(/[A-Za-z]:\/Users\/[^\s\\/]+/gi, "~")
-    .replace(/\/(home|Users)\/[^\s\\/]+/gi, "~");
+    .replace(/api[_-]?key["']?\s*[:=]\s*["']?([^"'\s,}]+)/gi, "api_key=[redacted]");
 }
 
 /** Workspace allowlist. OCMCP_ALLOWED_DIRECTORIES is a comma-separated list.

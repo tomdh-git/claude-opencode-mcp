@@ -1,6 +1,5 @@
 import type { CpuStatusReport, CpuCore } from "./monitor.js";
 import type { FormattedSessionDetail } from "./render.js";
-import { maskDirectory } from "../config.js";
 
 /** Formats a compact duration string */
 function formatDuration(sec: number): string {
@@ -107,7 +106,7 @@ export function renderSessionTuiComponent(session: FormattedSessionDetail): stri
 ╔${doubleLine}╗
 ║  OPENCODE NODE INSPECTOR: ${session.title.slice(0, 56).padEnd(56)}║
 ║  ID: ${session.id.padEnd(30)} Agent: ${(session.agent ?? "default").padEnd(16)} Model: ${(session.model ?? "default").padEnd(16)}║
-║  Directory: ${maskDirectory(session.directory).slice(0, 71).padEnd(71)}║
+║  Directory: ${session.directory.slice(0, 71).padEnd(71)}║
 ╚${doubleLine}╝
 `;
 
