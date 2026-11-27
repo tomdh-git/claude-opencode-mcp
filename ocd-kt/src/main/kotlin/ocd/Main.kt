@@ -35,8 +35,9 @@ suspend fun daemon(): Unit = coroutineScope {
     for (q in Store.queue()) if (Runner.units.containsKey(q.id)) Store.dropName(q.name)   // queue rows for sessions that are already live units
     Sched.ready = true                                                                        // adoption is done: from here on the scheduler may start things
 
-    launch(Dispatchers.Default) { Bus.flow.collect { e -> Runner.onBus(e); Sched.onBus(e); Api.onBus(e) } }
-    launch(Dispatchers.Default) { OpenCode.eventLoop({ Runner.onEvent(it) }, { shutdown -> Bus.emit(if (shutdown) BusEvent.OcShutdown else BusEvent.OcReconnected) }) }
+    Tasks.restore()
+    launch(Dispatchers.Default) { Bus.flow.collect { e -> Runner.onBus(e); Sched.onBus(e); Api.onBus(e); Tasks.onBus(e) } }
+    launch(Dispatchers.Default) { OpenCode.eventLoop({ Tasks.onEvent(it); Runner.onEvent(it) }, { shutdown -> Bus.emit(if (shutdown) BusEvent.OcShutdown else BusEvent.OcReconnected) }) }
     Sched.watchReviews()
     launch(Dispatchers.Default) {
         var tick = 0
@@ -44,7 +45,7 @@ suspend fun daemon(): Unit = coroutineScope {
             delay(30_000)
             try {
                 if (!Cfg.SHADOW && ++tick % 10 == 0) Sched.sweepTriage()
-                Runner.reconcile()
+                Runner.reconcile(); Tasks.reconcile()
                 if (Pool.auditDue) Pool.audit(if (Cfg.SHADOW) "periodic (shadow)" else "periodic")
                 Sched.refill(); Sched.pump()
             } catch (e: Exception) { if (e is CancellationException) throw e; Log.log("tick error", e.toString().take(100)) }

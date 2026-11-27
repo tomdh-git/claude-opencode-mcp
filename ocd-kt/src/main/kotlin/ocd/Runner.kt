@@ -73,7 +73,7 @@ object Runner {
         if (Cfg.SHADOW) return
         val base = runCatching { File(Cfg.PROG, "_p_${u.name}.txt").readText() }.getOrDefault("")
         if (base.isEmpty()) { retire(u, "rotate: no prompt file to restart from, retiring ($why)"); return }
-        val sid = try { OpenCode.create(u.name) } catch (e: Exception) { Log.log(u.name, "rotate: create failed", e.toString().take(100)); return }
+        val sid = try { OpenCode.create(u.name, Cfg.modelFor(u.name)) } catch (e: Exception) { Log.log(u.name, "rotate: create failed", e.toString().take(100)); return }
         u.done = true; u.running = false; forget(u); Store.setState(u.id, "retired")
         runCatching { OpenCode.interrupt(u.id) }; scope.launch { delay(2000); runCatching { OpenCode.setArchived(u.id, true) } }
         val n = UnitRun(sid, u.name, u.file).also { it.running = true; it.lastSend = now() }; units[sid] = n; Store.startUnit(sid, u.name, u.file.path)
@@ -212,7 +212,7 @@ object Runner {
             is OcEvent.ExecutionFailed -> if (u != null) {
                 u.running = false; Log.note("EXECUTION-FAILED", who, short(e))
                 if (e.isQuota) Pool.onQuota("execution failed: quota")
-                if (e.errorType == "provider.no-route") runCatching { OpenCode.act("switchModel") { OpenCode.switchModel(u.id) }; Log.note("MODEL-RESET", who, "no-route -> ${Cfg.MODEL.id}") }
+                if (e.errorType == "provider.no-route") runCatching { OpenCode.act("switchModel") { OpenCode.switchModel(u.id, Cfg.modelFor(u.name)) }; Log.note("MODEL-RESET", who, "no-route -> ${Cfg.modelFor(u.name).id}") }
                 val n = ++u.consFail
                 if (n >= Cfg.FAIL_ROTATE && !e.isQuota && !e.isProviderOutage) { scope.launch { rotate(u, "$n failed executions in a row (${e.errorType})") }; return }
                 u.retryAt = now() + minOf(120_000L, 5000L shl minOf(n - 1, 5))      // exponential backoff: a failing provider is not hammered

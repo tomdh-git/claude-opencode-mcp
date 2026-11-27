@@ -66,13 +66,13 @@ object OpenCode {
     suspend fun create(title: String, m: ModelRef = Cfg.MODEL): String {
         val body = buildJsonObject {
             put("title", title); put("agent", "general")
-            put("model", buildJsonObject { put("id", m.id); put("providerID", m.providerID); put("variant", "default") })
+            put("model", buildJsonObject { put("id", m.id); put("providerID", m.providerID); put("variant", m.variant) })
             put("location", buildJsonObject { put("directory", Cfg.REPO.path.replace('\\', '/')) })
         }
         val id = data(call("POST", "/api/session", body))?.obj()?.str("id") ?: error("create returned no session id")
         switchModel(id, m); return id
     }
-    suspend fun switchModel(id: String, m: ModelRef = Cfg.MODEL) { call("POST", "/api/session/$id/model", buildJsonObject { put("model", buildJsonObject { put("id", m.id); put("providerID", m.providerID) }) }) }
+    suspend fun switchModel(id: String, m: ModelRef = Cfg.MODEL) { call("POST", "/api/session/$id/model", buildJsonObject { put("model", buildJsonObject { put("id", m.id); put("providerID", m.providerID); put("variant", m.variant) }) }) }
     suspend fun prompt(id: String, text: String) { call("POST", "/api/session/$id/prompt", buildJsonObject { put("text", text) }) }
     suspend fun interrupt(id: String): Boolean = call("POST", "/api/session/$id/interrupt")?.obj()?.get("interrupted")?.jsonPrimitive?.booleanOrNull ?: false
     suspend fun setArchived(id: String, archived: Boolean) { call("PATCH", "/api/session/$id", buildJsonObject { put("archived", archived) }) }

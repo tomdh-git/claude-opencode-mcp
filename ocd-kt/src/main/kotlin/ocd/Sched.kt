@@ -56,9 +56,19 @@ object Sched {
             for (id in ids) {
                 val name = "U-E$id"; if (made >= need) break
                 if (name in pending || name in live) continue
-                val promptFile = File(Cfg.PROG, "_p_$name.txt"); withContext(Dispatchers.IO) { py("tools/mkeasy.py", id) }
+                val promptFile = File(Cfg.PROG, "_p_$name.txt"); withContext(Dispatchers.IO) {
+                    py("tools/mkeasy.py", id)
+                    // single (whole-function) items get a static pack computed by programs; the unit reads it first (tools/ctx/pack.py)
+                    if (Regex("^X[0-9][.][0-9a-f]+$").matches(id) && promptFile.exists()) {
+                        val rva = id.substringAfter('.')
+                        py("tools/ctx/pack.py", "build", "0x$rva")
+                        // one self-contained prompt (pack + data + scaffold inlined); when it is rewritten the old "read the pack" line below is not needed
+                        val rewritten = py("tools/ctx/mkprompt.py", id).first.contains("prompt rewritten")
+                        if (!rewritten && File(Cfg.REPO, "docs/progress/pack/$rva.md").exists()) promptFile.appendText(System.lineSeparator() + "PACK: docs/progress/pack/$rva.md was computed by programs from the exe (listing, callers, callee status, strings, field accesses, closest finished lift). Read it FIRST and do not recompute what it states; think only about its [open] decisions. Finish with python tools/ctx/gate.py 0x$rva (one line) before writing CLOSES? YES. Keep reply text to 2 short lines between tool calls (no analysis in text); a small function must take under 12 turns. See the Speed rules in docs/OPENCODE_BRIEF.md." + System.lineSeparator())
+                    }
+                }
                 if (!promptFile.exists()) { Log.log("no prompt for", id); continue }
-                val sid = OpenCode.create(name)
+                val sid = OpenCode.create(name, Cfg.modelFor(name)); Store.journal("ARM", name, Cfg.armOf(name) + " " + Cfg.modelFor(name).id + "/" + Cfg.modelFor(name).variant)
                 if (Store.enqueue(sid, name, File(Cfg.PROG, "oc_$name.md").path, promptFile.path)) { pending.add(name); made++; Log.say(java.time.Instant.now().toString(), "queued", name, sid); Bus.emit(BusEvent.QueueChanged) }
                 else archiveLater(sid)   // the store refused a duplicate: never keep the orphan session
             }
@@ -68,7 +78,12 @@ object Sched {
 
     fun onBus(e: BusEvent) {
         when (e) {
-            is BusEvent.UnitFinished -> scope.launch { pump(); refill() }
+            is BusEvent.UnitFinished -> scope.launch {
+                // programs decide close / retry / resolve from the gate (tools/ctx/finish.py); a unit that left a placeholder `CLOSES? NO` with a passing gate is closed, a failing gate writes its errors into a hint
+                val id = e.name.removePrefix("U-E")
+                if (Regex("^X[0-9][.][0-9a-f]+$").matches(id)) withContext(Dispatchers.IO) { runCatching { Log.log("finish", id, py("tools/ctx/finish.py", id).first.trim().take(160)) } }
+                pump(); refill()
+            }
             is BusEvent.UnitStarted -> scope.launch { refill() }      // NOT QueueChanged: refill/pump emit that one (mirrors listen to it); listening to it looped forever
             BusEvent.ReviewRecorded -> scope.launch { refill() }
             BusEvent.KeysRecovered, is BusEvent.KeyRotated -> scope.launch { pump() }

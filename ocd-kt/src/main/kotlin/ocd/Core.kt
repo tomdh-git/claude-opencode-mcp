@@ -23,6 +23,15 @@ object Cfg {
     const val NOPROG_MAX = 6
     const val FAIL_ROTATE = 6
     val MODEL = ModelRef("kilo-auto/free", "kilo")
+    /** A/B arm "fast": whole-function items (singles) whose name hashes below ARM_FAST_PCT run on a model with reasoning switched off (variant none). kilo-auto/free currently routes to nvidia/nemotron-3.5-super-vl:free, which spends ~99% of its tokens reasoning. 0 = off. */
+    val ARM_FAST_PCT: Int = envLong("ARM_FAST_PCT", 0).toInt()
+    val FAST_MODEL = ModelRef("nvidia/nemotron-3.5-super-vl:free", "kilo", "none")
+    private val SINGLE = Regex("^U-EX[0-9][.][0-9a-f]+$")
+    /** A/B arm "zen": OpenCode Zen free model (no key of ours; provider id "opencode"); a share of singles, taken from the low end of the hash range before the fast arm. 0 = off. */
+    val ARM_ZEN_PCT: Int = envLong("ARM_ZEN_PCT", 0).toInt()
+    val ZEN_MODEL = ModelRef("deepseek-v4.1-flash-free", "opencode")
+    fun armOf(name: String): String { if (!SINGLE.matches(name)) return "control"; val h = Math.floorMod(name.hashCode(), 100); return if (h < ARM_ZEN_PCT) "zen" else if (ARM_FAST_PCT > 0 && h < ARM_ZEN_PCT + ARM_FAST_PCT) "fast" else "control" }
+    fun modelFor(name: String): ModelRef = when (armOf(name)) { "zen" -> ZEN_MODEL; "fast" -> FAST_MODEL; else -> MODEL }
     const val KILO_PROVIDER = "kilo"
     val HOME: File = File(System.getProperty("user.home"))
 
@@ -40,7 +49,7 @@ fun JsonObject.sub(k: String): JsonObject? = this[k] as? JsonObject
 fun JsonObject.arr(k: String): JsonArray? = this[k] as? JsonArray
 
 // ---- domain types
-data class ModelRef(val id: String, val providerID: String)
+data class ModelRef(val id: String, val providerID: String, val variant: String = "default")
 
 data class Tokens(val input: Long = 0, val output: Long = 0) { val total get() = input + output }
 

@@ -8,7 +8,7 @@ OUT="${OCD_DIR:-C:/Users/Atomi/opencode-mcp-bridge}"
 n=0
 while true; do
   t0=$SECONDS
-  MAXRUN=${MAXRUN:-4} build/install/ocd/bin/ocd.bat >>"$OUT/keeper-run.out" 2>>"$OUT/ocd.err"
+  ARM_FAST_PCT=${ARM_FAST_PCT:-30} ARM_ZEN_PCT=${ARM_ZEN_PCT:-0} MAXRUN=${MAXRUN:-4} build/install/ocd/bin/ocd.bat >>"$OUT/keeper-run.out" 2>>"$OUT/ocd.err"
   code=$?; dt=$((SECONDS - t0))
   if [ $code -eq 0 ]; then n=0; read -t 30 <> <(:) 2>/dev/null; continue; fi
   if [ $dt -gt 120 ]; then n=0; else n=$((n+1)); fi

@@ -23,6 +23,7 @@ object Api {
         put("ok", true); put("pid", ProcessHandle.current().pid()); put("uptimeS", (System.currentTimeMillis() - started) / 1000); put("shadow", Cfg.SHADOW); put("maxrun", Cfg.MAXRUN)
         put("running", Runner.live().size)                                   // slots in use (live units)
         put("generating", us.count { it.jsonObject["running"]?.jsonPrimitive?.boolean == true })   // units generating right now
+        put("groups", Tasks.statusJson())
         put("units", us); put("queue", buildJsonArray { Store.queue().forEach { add(it.name) } }); put("keys", Pool.summary())
         put("journal", journalJson(15))
     }
@@ -31,6 +32,7 @@ object Api {
     /** one entry point for every operator command, whatever transport it arrived on */
     suspend fun command(unit: String, text: String): JsonObject {
         if (Regex("^!drop(?!\\w)").containsMatchIn(text)) { Sched.drop(unit); return buildJsonObject { put("ok", true); put("dropped", unit) } }
+        if (Tasks.has(unit)) { Tasks.nudge(unit, text); return buildJsonObject { put("ok", true); put("task", unit) } }
         Runner.nudge(unit, text); return buildJsonObject { put("ok", true) }
     }
 
@@ -50,6 +52,16 @@ object Api {
                     val b = runCatching { JSON.parseToJsonElement(x.requestBody.readBytes().toString(Charsets.UTF_8)).jsonObject }.getOrNull()
                     val unit = b?.str("unit"); val msg = b?.str("message")
                     if (unit == null || msg == null) x.json(buildJsonObject { put("error", "unit and message required") }, 400) else x.json(runBlocking { command(unit, msg) })
+                }
+                post && (path == "/task" || path == "/adopt") -> {
+                    val b = runCatching { JSON.parseToJsonElement(x.requestBody.readBytes().toString(Charsets.UTF_8)).jsonObject }.getOrNull()
+                    val name = b?.str("name"); val group = b?.str("group") ?: "tasks"
+                    if (name == null) x.json(buildJsonObject { put("error", "name required (task: also prompt; adopt: also sessionId)") }, 400)
+                    else {
+                        val t = if (path == "/task") { val p = b.str("prompt"); if (p == null) null else runBlocking { Tasks.create(name, group, p, b.str("file")) } }
+                                else { val sid = b.str("sessionId"); if (sid == null) null else runBlocking { Tasks.adopt(sid, name, group, b.str("file")) } }
+                        if (t == null) x.json(buildJsonObject { put("error", "not started: missing field, duplicate name, or shadow mode") }, 400) else x.json(buildJsonObject { put("ok", true); put("sessionId", t.id); put("group", group); put("name", name) })
+                    }
                 }
                 post && path == "/kick" -> { Runner.resetCounters(); scope.launch { Runner.reconcile(); Sched.pump() }; x.json(buildJsonObject { put("ok", true) }) }
                 post && path == "/rotate" -> { scope.launch { Pool.onQuota("operator request", true) }; x.json(buildJsonObject { put("ok", true) }) }

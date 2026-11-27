@@ -21,6 +21,7 @@ object Store {
             it.execute("CREATE UNIQUE INDEX IF NOT EXISTS one_live_unit ON units(name) WHERE state IN ('running','stuck')")
             it.execute("CREATE TABLE IF NOT EXISTS queue(seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT UNIQUE, name TEXT UNIQUE, file TEXT, prompt_file TEXT, ts INTEGER)")
             it.execute("CREATE TABLE IF NOT EXISTS keys(label TEXT PRIMARY KEY, cool_until INTEGER DEFAULT 0, fails INTEGER DEFAULT 0, last_status INTEGER, last_probe INTEGER)")
+            it.execute("CREATE TABLE IF NOT EXISTS tasks(id TEXT PRIMARY KEY, name TEXT NOT NULL, grp TEXT NOT NULL, file TEXT, state TEXT NOT NULL, updated_at INTEGER)")
             it.execute("CREATE TABLE IF NOT EXISTS journal(seq INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER, kind TEXT, unit TEXT, detail TEXT)")
         }
         c
@@ -37,6 +38,11 @@ object Store {
     }
     @Synchronized fun setState(id: String, state: String) { conn.prepareStatement("UPDATE units SET state=?, updated_at=? WHERE id=?").use { it.setString(1, state); it.setLong(2, now()); it.setString(3, id); it.executeUpdate() } }
     @Synchronized fun liveUnits(): List<UnitRow> = conn.createStatement().use { s -> s.executeQuery("SELECT id,name,file,state FROM units WHERE state IN ('running','stuck')").use { r -> buildList { while (r.next()) add(UnitRow(r.getString(1), r.getString(2), r.getString(3), r.getString(4))) } } }
+
+    data class TaskRow(val id: String, val name: String, val group: String, val file: String)
+    @Synchronized fun saveTask(id: String, name: String, group: String, file: String, state: String) { conn.prepareStatement("INSERT OR REPLACE INTO tasks(id,name,grp,file,state,updated_at) VALUES(?,?,?,?,?,?)").use { it.setString(1, id); it.setString(2, name); it.setString(3, group); it.setString(4, file); it.setString(5, state); it.setLong(6, now()); it.executeUpdate() } }
+    @Synchronized fun setTaskState(id: String, state: String) { conn.prepareStatement("UPDATE tasks SET state=?, updated_at=? WHERE id=?").use { it.setString(1, state); it.setLong(2, now()); it.setString(3, id); it.executeUpdate() } }
+    @Synchronized fun liveTasks(): List<TaskRow> = conn.createStatement().use { s -> s.executeQuery("SELECT id,name,grp,file FROM tasks WHERE state='running'").use { r -> buildList { while (r.next()) add(TaskRow(r.getString(1), r.getString(2), r.getString(3), r.getString(4) ?: "")) } } }
 
     @Synchronized fun enqueue(id: String, name: String, file: String, promptFile: String): Boolean =
         conn.prepareStatement("INSERT OR IGNORE INTO queue(id,name,file,prompt_file,ts) VALUES(?,?,?,?,?)").use { it.setString(1, id); it.setString(2, name); it.setString(3, file); it.setString(4, promptFile); it.setLong(5, now()); it.executeUpdate() > 0 }
